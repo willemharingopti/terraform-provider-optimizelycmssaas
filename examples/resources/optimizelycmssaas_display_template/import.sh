@@ -1,0 +1,1 @@
+terraform import optimizelycmssaas_display_template.article_layout ArticleLayout

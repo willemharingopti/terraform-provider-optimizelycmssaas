@@ -1,0 +1,1 @@
+terraform import optimizelycmssaas_property_group.seo SeoSettings

@@ -1,0 +1,10 @@
+# Loads the provider from a local build instead of a registry.
+#   go build -o terraform-provider-optimizelycmssaas .      (from the repo root)
+#   export TF_CLI_CONFIG_FILE=$PWD/dev.tfrc             (from this directory)
+# dev_overrides skips `terraform init` for this provider; run validate/plan/apply directly.
+provider_installation {
+  dev_overrides {
+    "example/optimizelycmssaas" = "../.." # directory containing the built binary (resolved from the working directory)
+  }
+  direct {}
+}

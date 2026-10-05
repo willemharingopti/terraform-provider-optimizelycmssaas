@@ -1,0 +1,1 @@
+terraform import optimizelycmssaas_content_type.article Article

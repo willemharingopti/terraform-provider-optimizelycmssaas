@@ -1,0 +1,5 @@
+.env
+openapi.json
+terraform-provider-optimizelycmssaas
+*.tfstate*
+.terraform/

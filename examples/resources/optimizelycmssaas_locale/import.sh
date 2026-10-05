@@ -1,0 +1,1 @@
+terraform import optimizelycmssaas_locale.swedish sv
