@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/example/terraform-provider-optimizelycmssaas/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -13,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/willemharingopti/terraform-provider-optimizelycmssaas/internal/client"
 )
 
 var _ provider.Provider = &cmsProvider{}

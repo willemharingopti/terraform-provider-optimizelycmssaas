@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     optimizelycmssaas = {
-      source = "example/optimizelycmssaas" # placeholder address, see README
+      source = "willemharingopti/optimizelycmssaas" # placeholder address, see README
     }
   }
 }

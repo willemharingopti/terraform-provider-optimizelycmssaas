@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/example/terraform-provider-optimizelycmssaas/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/willemharingopti/terraform-provider-optimizelycmssaas/internal/client"
 )
 
 var (

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/example/terraform-provider-optimizelycmssaas/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	dschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/willemharingopti/terraform-provider-optimizelycmssaas/internal/client"
 )
 
 // lookupSpec describes a by-key data source mirroring a resource. Its schema is

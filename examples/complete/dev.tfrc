@@ -4,7 +4,7 @@
 # dev_overrides skips `terraform init` for this provider; run validate/plan/apply directly.
 provider_installation {
   dev_overrides {
-    "example/optimizelycmssaas" = "../.." # directory containing the built binary (resolved from the working directory)
+    "willemharingopti/optimizelycmssaas" = "../.." # directory containing the built binary (resolved from the working directory)
   }
   direct {}
 }

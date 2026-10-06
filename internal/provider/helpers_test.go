@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/example/terraform-provider-optimizelycmssaas/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/willemharingopti/terraform-provider-optimizelycmssaas/internal/client"
 )
 
 func raw(m map[string]string) map[string]json.RawMessage {

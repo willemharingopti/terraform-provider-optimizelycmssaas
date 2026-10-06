@@ -30,7 +30,7 @@ Declare the provider in your configuration:
 terraform {
   required_providers {
     optimizelycmssaas = {
-      source = "example/optimizelycmssaas" # replace with the address you publish under
+      source = "willemharingopti/optimizelycmssaas" # replace with the address you publish under
     }
   }
 }
@@ -40,9 +40,9 @@ Building from source and installing it locally instead:
 
 ```shell
 go build -o terraform-provider-optimizelycmssaas .
-mkdir -p ~/.terraform.d/plugins/registry.terraform.io/example/optimizelycmssaas/0.0.1/darwin_arm64
+mkdir -p ~/.terraform.d/plugins/registry.terraform.io/willemharingopti/optimizelycmssaas/0.0.1/darwin_arm64
 cp terraform-provider-optimizelycmssaas \
-   ~/.terraform.d/plugins/registry.terraform.io/example/optimizelycmssaas/0.0.1/darwin_arm64/terraform-provider-optimizelycmssaas_v0.0.1
+   ~/.terraform.d/plugins/registry.terraform.io/willemharingopti/optimizelycmssaas/0.0.1/darwin_arm64/terraform-provider-optimizelycmssaas_v0.0.1
 terraform init
 ```
 

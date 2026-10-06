@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/example/terraform-provider-optimizelycmssaas/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/willemharingopti/terraform-provider-optimizelycmssaas/internal/client"
 )
 
 // ---- null / empty handling ----

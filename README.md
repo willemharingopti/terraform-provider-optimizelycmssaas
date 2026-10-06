@@ -4,9 +4,26 @@ Manages the content model and configuration of an Optimizely CMS (SaaS) instance
 through its [REST API (v1)](https://docs.optimizely.com/cms-saas/api/optimizely-cms-rest-api-content),
 built on the Terraform Plugin Framework.
 
-> **Status: early.** Built against the API's OpenAPI spec (v1.1). Reads are verified against a live instance; write paths
+> **Status: early (pre-1.0).** Built against the API's OpenAPI spec (v1.1). Reads are verified against a live instance; write paths
 > are covered by unit tests with a mock API and by acceptance tests (see *Testing*), which you should run against a sandbox
-> before relying on this. The module path and registry address are placeholders (`example`).
+> before relying on this. Minor releases below 1.0 may contain breaking changes; see [CHANGELOG.md](CHANGELOG.md).
+
+## Installation
+
+From the Terraform Registry (once published):
+
+```hcl
+terraform {
+  required_providers {
+    optimizelycmssaas = {
+      source  = "willemharingopti/optimizelycmssaas"
+      version = "~> 0.1"
+    }
+  }
+}
+```
+
+To publish a release, see [RELEASING.md](RELEASING.md). To try a local build, see *Development* below.
 
 ## Documentation
 
@@ -107,8 +124,12 @@ copy/undelete, approval workflows, and the `Prefer`, `cms-skip-validation` and `
 ## Development
 
 ```sh
-go build ./... && go vet ./... && go test ./...      # unit tests; live read-only checks run if credentials are set
+make build test          # or: go build ./... && go vet ./... && go test ./...
+make docs                # regenerate docs/ (needs terraform on PATH); CI fails if docs/ is stale
+make snapshot            # build every release platform locally, unsigned, to check .goreleaser.yml
 ```
+
+Unit tests run without credentials; the live read-only check runs when they are set.
 
 To try a local build without publishing, build the binary and load it through `dev_overrides`.
 [examples/complete/dev.tfrc](examples/complete/dev.tfrc) already does this with a relative path:

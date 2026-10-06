@@ -3,3 +3,6 @@ openapi.json
 terraform-provider-optimizelycmssaas
 *.tfstate*
 .terraform/
+dist/
+*.asc
+*.gpg

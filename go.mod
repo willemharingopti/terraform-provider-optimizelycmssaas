@@ -1,4 +1,4 @@
-module github.com/example/terraform-provider-optimizelycmssaas
+module github.com/willemharingopti/terraform-provider-optimizelycmssaas
 
 go 1.25.8
 

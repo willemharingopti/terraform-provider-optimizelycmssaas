@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     optimizelycmssaas = {
-      source = "example/optimizelycmssaas" # replace with your registry address
+      source = "willemharingopti/optimizelycmssaas" # replace with your registry address
     }
   }
 }
