@@ -27,25 +27,7 @@ GoReleaser (`.goreleaser.yml`) from the workflow in `.github/workflows/release.y
    **public** key for your namespace. Then choose *Publish > Provider*, and select the repository. The registry installs a
    webhook that notices new releases.
 
-## Automatic releases
-
-`.github/workflows/bump-release.yml` runs after the Test workflow passes on `main`. It reads the commit messages since the
-last tag ([Conventional Commits](https://www.conventionalcommits.org/)) and pushes the next version tag:
-
-| Commits since the last tag | Bump |
-|---|---|
-| `feat!:` or a `BREAKING CHANGE:` footer | minor while below 1.0, major from 1.0 |
-| `feat:` | minor |
-| `fix:`, `docs:`, `refactor:`, or anything not listed below | patch |
-| only `chore:`, `ci:`, `test:`, `style:`, `build:` | no release |
-
-The tag starts the Release workflow, which still waits for your approval of the `release` environment. Setup: add a
-repository secret `RELEASE_TOKEN`, a fine-grained personal access token limited to this repository with *Contents: read
-and write* (a tag pushed with the default token does not start other workflows), and let its owner create `v*` tags in
-the tag ruleset. `CHANGELOG.md` is not updated automatically: move the Unreleased entries under the new version when you
-approve the release, or before merging.
-
-## Making a release by hand
+## Making a release
 
 1. Update `CHANGELOG.md` and make sure the checks pass: `make test`, and `make docs` leaves no changes in `docs/`.
 2. Optionally rehearse the build, which signs nothing and publishes nothing: `make snapshot`.
