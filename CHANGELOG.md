@@ -5,6 +5,10 @@ uses [Semantic Versioning](https://semver.org/). While the version is below 1.0,
 
 ## [Unreleased]
 
+### Added
+- `optimizelycmssaas_content` exports a computed `reference` (`cms://content/<key>`), for use as an application's `entry_point`.
+- Provider function `slugify`, e.g. `provider::optimizelycmssaas::slugify("Main site")` is `main_site`. Needs Terraform 1.8 or later.
+
 ## [0.1.0]
 
 First release.

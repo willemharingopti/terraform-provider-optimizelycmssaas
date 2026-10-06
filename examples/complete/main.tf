@@ -142,7 +142,7 @@ resource "optimizelycmssaas_application" "site" {
   key          = local.site_key
   display_name = var.site_name
   type         = "website"
-  entry_point  = "cms://content/${optimizelycmssaas_content.site.key}"
+  entry_point  = optimizelycmssaas_content.site.reference
 
   hosts = var.host == null ? null : [
     { authority = var.host, type = "primary", locale = var.start_page_locale, preferred_url_scheme = "https" },

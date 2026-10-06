@@ -53,6 +53,7 @@ resource "optimizelycmssaas_content" "start" {
 
 ### Read-Only
 
+- `reference` (String) The item as a content reference, cms://content/<key>. Use as an application's `entry_point`.
 - `status` (String) Status of the managed version, e.g. draft, published.
 - `version` (String) Identifier of the managed version.
 

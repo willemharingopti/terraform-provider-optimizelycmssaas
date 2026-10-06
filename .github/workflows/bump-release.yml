@@ -1,0 +1,73 @@
+name: Bump release
+
+# After the Test workflow passes on main, work out the next version from the commit messages since the
+# last tag and push it. The tag then starts the Release workflow, which still waits for approval of the
+# "release" environment before anything is signed or published.
+#
+#   feat!: ... or a "BREAKING CHANGE:" footer   minor bump (below 1.0), major bump from 1.0
+#   feat: ...                                    minor bump
+#   fix:, perf:, refactor:, docs: ... anything   patch bump
+#   only chore:, ci:, test:, style:, build:      no release
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency: bump-release
+
+jobs:
+  bump:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0 # the tags are needed
+          # A tag pushed with the default GITHUB_TOKEN does not start other workflows, so the Release
+          # workflow would never run. RELEASE_TOKEN is a fine-grained personal access token (or GitHub App
+          # token) with "Contents: read and write" on this repository only, which must also be allowed to
+          # create v* tags under the tag ruleset.
+          token: ${{ secrets.RELEASE_TOKEN }}
+      - name: Work out and push the next version
+        run: |
+          set -euo pipefail
+          last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "")
+          range=${last:+$last..}HEAD
+          if [ -n "$last" ] && [ "$(git rev-list --count "$range")" = 0 ]; then
+            echo "No commits since $last."; exit 0
+          fi
+          if [ -n "$last" ] && git tag --points-at HEAD | grep -q '^v'; then
+            echo "HEAD is already tagged."; exit 0
+          fi
+
+          ver=${last:-v0.0.0}; ver=${ver#v}
+          IFS=. read -r major minor patch <<<"$ver"
+
+          subjects=$(git log --format=%s "$range")
+          bodies=$(git log --format=%b "$range")
+          if grep -Eq '^[a-z]+(\([^)]*\))?!:' <<<"$subjects" || grep -q '^BREAKING[ -]CHANGE:' <<<"$bodies"; then
+            bump=breaking
+          elif grep -Eq '^feat(\([^)]*\))?:' <<<"$subjects"; then
+            bump=minor
+          elif grep -Evq '^(chore|ci|test|style|build)(\([^)]*\))?:' <<<"$subjects"; then
+            bump=patch
+          else
+            echo "Only chore/ci/test/style/build commits: no release."; exit 0
+          fi
+
+          case "$bump" in
+            breaking) if [ "$major" -ge 1 ]; then major=$((major+1)); minor=0; patch=0; else minor=$((minor+1)); patch=0; fi ;;
+            minor)    minor=$((minor+1)); patch=0 ;;
+            patch)    patch=$((patch+1)) ;;
+          esac
+          next="v$major.$minor.$patch"
+
+          echo "Releasing $next (was ${last:-none}), $bump bump"
+          git tag -a "$next" -m "Release $next"
+          git push origin "$next"

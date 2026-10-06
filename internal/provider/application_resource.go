@@ -74,7 +74,7 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"assets_root": schema.StringAttribute{
 				Computed: true, Description: "Root of the application-specific assets, when enabled.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseNonNullStateForUnknown()},
 			},
 			"hosts": schema.ListNestedAttribute{
 				Optional:    true,

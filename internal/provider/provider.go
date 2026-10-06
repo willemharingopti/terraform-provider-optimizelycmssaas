@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -15,7 +16,10 @@ import (
 	"github.com/willemharingopti/terraform-provider-optimizelycmssaas/internal/client"
 )
 
-var _ provider.Provider = &cmsProvider{}
+var (
+	_ provider.Provider              = &cmsProvider{}
+	_ provider.ProviderWithFunctions = &cmsProvider{}
+)
 
 var pathKey = path.Root("key")
 
@@ -98,6 +102,10 @@ func (p *cmsProvider) DataSources(context.Context) []func() datasource.DataSourc
 		ds = append(ds, func() datasource.DataSource { return &lookupDataSource{spec: spec} })
 	}
 	return ds
+}
+
+func (p *cmsProvider) Functions(context.Context) []func() function.Function {
+	return []func() function.Function{NewSlugifyFunction}
 }
 
 // clientFrom extracts the configured client during resource Configure.

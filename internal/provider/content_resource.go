@@ -46,6 +46,7 @@ type contentModel struct {
 	PermanentDelete types.Bool   `tfsdk:"permanent_delete"`
 	Version         types.String `tfsdk:"version"`
 	Status          types.String `tfsdk:"status"`
+	Reference       types.String `tfsdk:"reference"`
 }
 
 func (r *contentResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -99,6 +100,10 @@ func (r *contentResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
 				Description: "Delete permanently on destroy instead of moving to the CMS's recoverable deleted state.",
 			},
+			"reference": schema.StringAttribute{
+				Computed: true, PlanModifiers: keep,
+				Description: "The item as a content reference, cms://content/<key>. Use as an application's `entry_point`.",
+			},
 			"version": schema.StringAttribute{Computed: true, Description: "Identifier of the managed version."},
 			"status":  schema.StringAttribute{Computed: true, Description: "Status of the managed version, e.g. draft, published."},
 		},
@@ -143,6 +148,7 @@ func contentFromAPI(n *client.ContentNode, v *client.ContentVersion, prior conte
 		PermanentDelete: prior.PermanentDelete,
 		Version:         types.StringValue(v.Version),
 		Status:          types.StringValue(v.Status),
+		Reference:       types.StringValue("cms://content/" + n.Key),
 	}
 }
 

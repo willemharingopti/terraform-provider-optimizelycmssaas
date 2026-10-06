@@ -67,7 +67,7 @@ resource "optimizelycmssaas_application" "site" {
   key          = replace(var.site_name, "/[^0-9A-Za-z_]/", "") # letters, digits, underscore; starts with a letter
   display_name = var.site_name
   type         = "website"
-  entry_point  = "cms://content/${optimizelycmssaas_content.site.key}"
+  entry_point  = optimizelycmssaas_content.site.reference
 
   hosts = [
     { authority = "www.example.com", type = "primary", locale = "en", preferred_url_scheme = "https" },
