@@ -36,6 +36,9 @@ type ContentVersion struct {
 	SimpleRoute  string                     `json:"simpleRoute,omitempty"`
 	LastModified string                     `json:"lastModified,omitempty"`
 	Properties   map[string]json.RawMessage `json:"properties,omitempty"`
+	// Composition is the root CompositionNode of an experience or section. It is passed through
+	// as raw JSON so any node field the API supports works.
+	Composition json.RawMessage `json:"composition,omitempty"`
 }
 
 type NewContent struct {

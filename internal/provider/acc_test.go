@@ -12,13 +12,19 @@ package provider
 //
 //	OPTIMIZELY_CMS_TEST_CONTAINER, OPTIMIZELY_CMS_TEST_CONTENT_TYPE  (content, application)
 //	(a localized page type that may be created in that container)
+//
+// The composition test also needs OPTIMIZELY_CMS_TEST_ELEMENT_TYPE: a component type enabled for
+// composition (elementEnabled) without required properties. OPTIMIZELY_CMS_TEST_EXPERIENCE_TYPE
+// defaults to BlankExperience and must be creatable in the container.
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -286,6 +292,159 @@ resource "optimizelycmssaas_content" "t" {
 			{Config: cfg("TfAcc content edited", false), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("optimizelycmssaas_content.t", "display_name", "TfAcc content edited"),
 				resource.TestCheckResourceAttr("optimizelycmssaas_content.t", "status", "draft"))},
+		},
+	})
+}
+
+// remoteColumns counts the column nodes of the managed version's composition as the CMS holds it.
+func remoteColumns(name string, want int) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[name]
+		if !ok {
+			return fmt.Errorf("%s not in state", name)
+		}
+		c, err := testAccClient()
+		if err != nil {
+			return err
+		}
+		v, err := c.GetVersion(context.Background(), rs.Primary.Attributes["key"], rs.Primary.Attributes["version"])
+		if err != nil {
+			return err
+		}
+		var root map[string]any
+		if err := json.Unmarshal(v.Composition, &root); err != nil {
+			return fmt.Errorf("composition not readable: %w", err)
+		}
+		var count func(n map[string]any) int
+		count = func(n map[string]any) int {
+			total := 0
+			if n["nodeType"] == "column" {
+				total++
+			}
+			kids, _ := n["nodes"].([]any)
+			for _, k := range kids {
+				if m, ok := k.(map[string]any); ok {
+					total += count(m)
+				}
+			}
+			return total
+		}
+		if got := count(root); got != want {
+			return fmt.Errorf("the CMS has %d columns, want %d", got, want)
+		}
+		return nil
+	}
+}
+
+// remoteCompositionHas asserts the managed version's composition, as the CMS holds it, contains text.
+func remoteCompositionHas(name, text string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs := s.RootModule().Resources[name]
+		c, err := testAccClient()
+		if err != nil {
+			return err
+		}
+		v, err := c.GetVersion(context.Background(), rs.Primary.Attributes["key"], rs.Primary.Attributes["version"])
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(v.Composition), text) {
+			return fmt.Errorf("the CMS composition does not contain %q", text)
+		}
+		return nil
+	}
+}
+
+// TestAccContentComposition covers an experience with one section, one row and two columns, each holding a
+// component: create, no drift, edit, node removal, and a new draft once published. A composition change is
+// always written as a new version: PATCHing a version's composition does not apply to nodes matched by id.
+func TestAccContentComposition(t *testing.T) {
+	testAccEnv(t, "OPTIMIZELY_CMS_TEST_CONTAINER", "OPTIMIZELY_CMS_TEST_ELEMENT_TYPE")
+	experienceType := os.Getenv("OPTIMIZELY_CMS_TEST_EXPERIENCE_TYPE")
+	if experienceType == "" {
+		experienceType = "BlankExperience"
+	}
+	// columns lists the display name of each column's component; one entry per column.
+	cfg := func(publish bool, components ...string) string {
+		cols := ""
+		for _, name := range components {
+			cols += fmt.Sprintf(`
+          {
+            nodeType = "column"
+            nodes = [{
+              nodeType    = "component"
+              displayName = %q
+              component   = { contentType = %q }
+            }]
+          },`, name, os.Getenv("OPTIMIZELY_CMS_TEST_ELEMENT_TYPE"))
+		}
+		return fmt.Sprintf(`
+resource "optimizelycmssaas_content" "t" {
+  content_type     = %q
+  container        = %q
+  locale           = "en"
+  display_name     = "TfAcc experience"
+  publish          = %t
+  permanent_delete = true
+
+  composition_json = jsonencode({
+    nodeType   = "experience"
+    layoutType = "outline"
+    nodes = [{
+      nodeType   = "section"
+      layoutType = "grid"
+      component  = { contentType = "BlankSection" }
+      nodes = [{
+        nodeType = "row"
+        nodes = [%s
+        ]
+      }]
+    }]
+  })
+}`, experienceType, os.Getenv("OPTIMIZELY_CMS_TEST_CONTAINER"), publish, cols)
+	}
+	const name = "optimizelycmssaas_content.t"
+	var before string
+	remember := func(s *terraform.State) error {
+		before = s.RootModule().Resources[name].Primary.Attributes["version"]
+		return nil
+	}
+	newVersion := func(s *terraform.State) error {
+		if got := s.RootModule().Resources[name].Primary.Attributes["version"]; got == before {
+			return fmt.Errorf("editing a published version must create a new draft, but the version is still %s", got)
+		}
+		return nil
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() { testAccPreCheck(t) }, ProtoV6ProviderFactories: testAccProviders,
+		CheckDestroy: destroyed("optimizelycmssaas_content", func(ctx context.Context, c *client.Client, k string) error {
+			n, err := c.GetContent(ctx, k)
+			if err == nil && n.Deleted != nil {
+				return client.ErrNotFound
+			}
+			return err
+		}),
+		Steps: []resource.TestStep{
+			// Create with two columns.
+			{Config: cfg(false, "First", "Second"), Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(name, "status", "draft"), remoteColumns(name, 2))},
+			// The CMS adds node ids; that must not show as drift.
+			{Config: cfg(false, "First", "Second"), PlanOnly: true},
+			// Editing one value reaches the CMS.
+			{Config: cfg(false, "First edited", "Second"), Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(name, "status", "draft"), remoteColumns(name, 2), remoteCompositionHas(name, "First edited"))},
+			// Removing a column removes it in the CMS.
+			{Config: cfg(false, "First edited"), Check: resource.ComposeTestCheckFunc(
+				remoteColumns(name, 1), remoteCompositionHas(name, "First edited"))},
+			// Publish, then edit: a published version is immutable, so a new draft appears.
+			{Config: cfg(true, "First edited"), Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(name, "status", "published"), remember)},
+			{Config: cfg(false, "First again"), Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(name, "status", "draft"), remoteColumns(name, 1),
+				remoteCompositionHas(name, "First again"), newVersion)},
+			// Import reads the composition back; the configured string and the CMS's (with ids) are
+			// structurally equal but not byte-identical, so that attribute is not compared here.
+			keyedImport(name, "composition_json", "publish", "permanent_delete"),
 		},
 	})
 }

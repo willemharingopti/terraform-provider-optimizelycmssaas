@@ -118,7 +118,7 @@ grant, refreshes them as needed, and retries on HTTP 429.
 
 ## Not supported
 
-Manifest **import** (bulk, partly irreversible), content composition (experiences/sections), media upload, content
+Manifest **import** (bulk, partly irreversible), media upload, content
 copy/undelete, approval workflows, and the `Prefer`, `cms-skip-validation` and `If-Match` headers.
 
 ## Development

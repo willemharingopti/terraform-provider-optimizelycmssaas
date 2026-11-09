@@ -153,3 +153,97 @@ func TestEntryPointValueKeepsConfiguredFormWhenAPIDropsTheLocale(t *testing.T) {
 		t.Errorf("import must adopt the remote value, got %s", got)
 	}
 }
+
+func TestContentFromAPIComposition(t *testing.T) {
+	node := &client.ContentNode{Key: "k1", ContentType: "BlankExperience"}
+	ver := &client.ContentVersion{
+		Version: "v1", Status: "draft", Locale: "en", DisplayName: "Home",
+		Composition: json.RawMessage(`{"id":"srv","nodeType":"experience","nodes":[{"id":"s1","nodeType":"section","nodes":[]}]}`),
+	}
+	// Unmanaged: configuration without composition_json stays null even if the CMS has one.
+	got := contentFromAPI(node, ver, contentModel{Version: types.StringValue("v1")})
+	if !got.CompositionJSON.IsNull() {
+		t.Errorf("unmanaged composition must stay null, got %s", got.CompositionJSON.ValueString())
+	}
+	// Managed: server-added fields (ids) are tolerated, configured string kept verbatim.
+	cfg := types.StringValue(`{"nodeType":"experience","nodes":[{"nodeType":"section","nodes":[]}]}`)
+	got = contentFromAPI(node, ver, contentModel{Version: types.StringValue("v1"), CompositionJSON: cfg})
+	if got.CompositionJSON.ValueString() != cfg.ValueString() {
+		t.Errorf("server-added fields must not cause drift, got %s", got.CompositionJSON.ValueString())
+	}
+	// A removed node surfaces as drift.
+	cfg2 := types.StringValue(`{"nodeType":"experience","nodes":[{"nodeType":"section","nodes":[]},{"nodeType":"section","nodes":[]}]}`)
+	got = contentFromAPI(node, ver, contentModel{Version: types.StringValue("v1"), CompositionJSON: cfg2})
+	if got.CompositionJSON.ValueString() == cfg2.ValueString() {
+		t.Error("a node missing remotely must surface as drift")
+	}
+	// Import (no version recorded yet): composition is read into state.
+	got = contentFromAPI(node, ver, contentModel{})
+	if got.CompositionJSON.IsNull() {
+		t.Error("import must read the composition back")
+	}
+	setOn(t, "content(composition)", NewContentResource, got)
+}
+
+// planFor runs ModifyPlan with the given prior state and planned model and returns the resulting plan.
+func planFor(t *testing.T, state, plan contentModel) contentModel {
+	t.Helper()
+	ctx := context.Background()
+	r := NewContentResource().(*contentResource)
+	var rs resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &rs)
+	typ := rs.Schema.Type().TerraformType(ctx)
+	st := tfsdk.State{Schema: rs.Schema, Raw: tftypes.NewValue(typ, nil)}
+	pl := tfsdk.Plan{Schema: rs.Schema, Raw: tftypes.NewValue(typ, nil)}
+	if d := st.Set(ctx, state); d.HasError() {
+		t.Fatal(d)
+	}
+	if d := pl.Set(ctx, plan); d.HasError() {
+		t.Fatal(d)
+	}
+	resp := &resource.ModifyPlanResponse{Plan: pl}
+	r.ModifyPlan(ctx, resource.ModifyPlanRequest{State: st, Plan: pl}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatal(resp.Diagnostics)
+	}
+	var out contentModel
+	if d := resp.Plan.Get(ctx, &out); d.HasError() {
+		t.Fatal(d)
+	}
+	return out
+}
+
+func TestModifyPlanTreatsConfigSubsetOfRecordedCompositionAsUnchanged(t *testing.T) {
+	recorded := `{"id":"r","nodeType":"experience","nodes":[{"id":"a","nodeType":"section","nodes":[]}]}`
+	cfg := `{"nodeType":"experience","nodes":[{"nodeType":"section","nodes":[]}]}`
+	base := contentModel{
+		Key: types.StringValue("k"), ContentType: types.StringValue("X"), DisplayName: types.StringValue("n"),
+		RouteSegment: types.StringValue("n"), Version: types.StringValue("1"), Status: types.StringValue("draft"),
+		Publish: types.BoolValue(false), PermanentDelete: types.BoolValue(false),
+		CompositionJSON: types.StringValue(recorded),
+	}
+	// As Terraform would plan it: config value in, computed attributes unknown because the string differs.
+	planned := base
+	planned.CompositionJSON = types.StringValue(cfg)
+	planned.RouteSegment, planned.Version, planned.Status = types.StringUnknown(), types.StringUnknown(), types.StringUnknown()
+
+	got := planFor(t, base, planned)
+	if got.CompositionJSON.ValueString() != recorded || got.Version.ValueString() != "1" || got.Status.ValueString() != "draft" {
+		t.Errorf("an equivalent configuration must plan as no change, got %+v", got)
+	}
+
+	// A real change elsewhere still plans an update, but keeps the recorded composition.
+	planned.DisplayName = types.StringValue("renamed")
+	got = planFor(t, base, planned)
+	if got.CompositionJSON.ValueString() != recorded || !got.Version.IsUnknown() {
+		t.Errorf("other changes must still be planned, got %+v", got)
+	}
+
+	// A node the configuration adds is a real change in composition.
+	planned.DisplayName = base.DisplayName
+	planned.CompositionJSON = types.StringValue(`{"nodeType":"experience","nodes":[{"nodeType":"section","nodes":[]},{"nodeType":"section","nodes":[]}]}`)
+	got = planFor(t, base, planned)
+	if got.CompositionJSON.ValueString() == recorded || !got.Version.IsUnknown() {
+		t.Errorf("an added node must be planned, got %+v", got)
+	}
+}

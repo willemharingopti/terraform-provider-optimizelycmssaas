@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -342,5 +344,21 @@ func TestConfiguredRootKeyIsUsedAndReportedAsExplicit(t *testing.T) {
 	}
 	if _, err := New(f.srv.URL, "", "id", "secret", WithRootKey("../x")); err == nil {
 		t.Error("an invalid root key must be refused")
+	}
+}
+
+func TestContentVersionCompositionPassesThroughVerbatim(t *testing.T) {
+	const comp = `{"nodeType":"experience","nodes":[{"nodeType":"section","futureField":{"x":1}}]}`
+	var v ContentVersion
+	if err := json.Unmarshal([]byte(`{"version":"1","displayName":"d","composition":`+comp+`}`), &v); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := json.Marshal(v)
+	if !strings.Contains(string(out), `"composition":`+comp) {
+		t.Errorf("composition not preserved: %s", out)
+	}
+	out, _ = json.Marshal(ContentVersion{DisplayName: "d"})
+	if strings.Contains(string(out), "composition") {
+		t.Errorf("unset composition must be omitted: %s", out)
 	}
 }

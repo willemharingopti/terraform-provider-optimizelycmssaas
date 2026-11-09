@@ -54,11 +54,61 @@ supported yet**: a second resource with the same `key` would try to create the i
 and destroying it would delete the whole item with all its locales. Manage additional locales in the CMS for now, and
 keep one `optimizelycmssaas_content` resource per item.
 
+## Experiences (composition)
+
+An experience is a page whose body is a tree of sections, rows, columns and components. Set the tree with
+`composition_json`; leave it unset and the composition is not managed. Drift is compared structurally, so fields the CMS
+adds (such as node ids) are ignored. A change to the composition is always written as a new version of the page, because the CMS does not apply a patch to nodes it cannot match by id.
+
+```hcl
+resource "optimizelycmssaas_content" "home" {
+  content_type = "BlankExperience"
+  container    = data.optimizelycmssaas_content_root.this.key
+  locale       = "en"
+  display_name = "Home"
+
+  composition_json = jsonencode({
+    nodeType   = "experience"
+    layoutType = "outline"
+    nodes = [{
+      nodeType    = "section"
+      displayName = "Intro"
+      layoutType  = "grid"
+      component   = { contentType = "BlankSection" }
+      nodes = [{
+        nodeType = "row"
+        nodes = [{
+          nodeType = "column"
+          nodes = [{
+            nodeType    = "component"
+            displayName = "Hello"
+            component = {
+              contentType = "HeroVideo"
+              properties  = { heading = { value = "Hello" } }
+            }
+          }]
+        }]
+      }]
+    }]
+  })
+}
+```
+
+The shape follows experiences read back from a real instance:
+
+- The root is a node of type `experience` with `layoutType = "outline"`. Below it come `section`, `row`, `column` and
+  `component` nodes. A component can also sit directly under the root.
+- A section has `layoutType = "grid"` and a `component` of content type `BlankSection`.
+- Property values inside `component.properties` are wrapped as `{ value = ... }`; rich text is `{ value = { html = "..." } }`.
+- `displaySettings = { displayTemplate, settings }` is optional; every value in `settings` is a **string**, so write
+  `"true"`, not `true`.
+- The CMS adds an `id` to every node. You can leave `id` out; it does not cause drift.
+
 ## What is not tracked
 
 - A newer version created in the CMS interface after Terraform's version is **not noticed**; the provider keeps following
   the version it created or imported.
-- Additional locales of an existing item, composition (experiences and sections), media upload, copy, undelete and
+- Additional locales of an existing item, media upload, copy, undelete and
   approvals are not supported.
 
 ## Deleting

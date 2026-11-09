@@ -35,7 +35,7 @@ GoReleaser (`.goreleaser.yml`) from the workflow in `.github/workflows/release.y
 
    ```sh
    git tag v0.1.0
-   git push origin v0.1.0
+   git push terraform-provider-optimizelycmssaas v0.1.0
    ```
 
 4. Approve the `release` environment when the workflow asks. It builds the zips, writes `..._SHA256SUMS` and its

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -21,6 +22,7 @@ var (
 	_ resource.Resource                = &contentResource{}
 	_ resource.ResourceWithConfigure   = &contentResource{}
 	_ resource.ResourceWithImportState = &contentResource{}
+	_ resource.ResourceWithModifyPlan  = &contentResource{}
 )
 
 const statusPublished = "published"
@@ -42,6 +44,7 @@ type contentModel struct {
 	RouteSegment    types.String `tfsdk:"route_segment"`
 	SimpleRoute     types.String `tfsdk:"simple_route"`
 	PropertiesJSON  types.String `tfsdk:"properties_json"`
+	CompositionJSON types.String `tfsdk:"composition_json"`
 	Publish         types.Bool   `tfsdk:"publish"`
 	PermanentDelete types.Bool   `tfsdk:"permanent_delete"`
 	Version         types.String `tfsdk:"version"`
@@ -92,6 +95,12 @@ func (r *contentResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "JSON object of property values keyed by property name (use jsonencode); each value is wrapped as {value = ...}, e.g. {title = {value = \"Hello\"}}. " +
 					"Drift is detected structurally; fields the API adds as defaults are ignored.",
 			},
+			"composition_json": schema.StringAttribute{
+				Optional: true,
+				Description: "JSON object with the root composition node of an experience or section (use jsonencode): " +
+					"nodes of type section, row, column and component, e.g. {nodeType = \"experience\", nodes = [...]}. " +
+					"Leave unset to not manage the composition. Drift is detected structurally; fields the API adds as defaults are ignored.",
+			},
 			"publish": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
 				Description: "Publish the version after each apply. Publishing is one-way: setting this back to false does not unpublish.",
@@ -110,6 +119,53 @@ func (r *contentResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	}
 }
 
+// ModifyPlan keeps the recorded composition when the configured one is a structural subset of it.
+// The CMS adds node ids and defaults, and after an import the state holds all of them, so a
+// configuration without them would otherwise plan an update (and an apply would drop the ids).
+// Terraform compares strings before any semantic equality runs, hence this plan-time step.
+func (r *contentResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return // create or destroy
+	}
+	var plan, state contentModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() || !compositionKept(plan.CompositionJSON, state.CompositionJSON) ||
+		plan.CompositionJSON.Equal(state.CompositionJSON) {
+		return
+	}
+	plan.CompositionJSON = state.CompositionJSON
+	// Computed attributes become unknown as soon as anything differs. If nothing else does,
+	// restore them so the plan is empty rather than a pointless update.
+	settled := plan
+	if settled.RouteSegment.IsUnknown() {
+		settled.RouteSegment = state.RouteSegment
+	}
+	if settled.Version.IsUnknown() {
+		settled.Version = state.Version
+	}
+	if settled.Status.IsUnknown() {
+		settled.Status = state.Status
+	}
+	if reflect.DeepEqual(settled, state) {
+		plan = settled
+	}
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, plan)...)
+}
+
+// compositionKept reports whether the configured composition describes the recorded one: both set,
+// and every configured field present and equal in the recorded JSON (which may hold more).
+func compositionKept(configured, recorded types.String) bool {
+	if configured.IsNull() || configured.IsUnknown() || recorded.IsNull() || recorded.IsUnknown() {
+		return false
+	}
+	var want, have any
+	if json.Unmarshal([]byte(configured.ValueString()), &want) != nil || json.Unmarshal([]byte(recorded.ValueString()), &have) != nil {
+		return false
+	}
+	return jsonSubset(want, have)
+}
+
 func (r *contentResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	r.c = clientFrom(req.ProviderData, &resp.Diagnostics)
 }
@@ -126,12 +182,30 @@ func rawProps(m map[string]any) map[string]json.RawMessage {
 	return out
 }
 
+// rawObject marshals a parsed JSON object; nil yields nil so the field is omitted.
+func rawObject(m map[string]any) json.RawMessage {
+	if m == nil {
+		return nil
+	}
+	b, _ := json.Marshal(m)
+	return b
+}
+
 func contentFromAPI(n *client.ContentNode, v *client.ContentVersion, prior contentModel) contentModel {
 	remote := map[string]any{}
 	for k, raw := range v.Properties {
 		var x any
 		_ = json.Unmarshal(raw, &x)
 		remote[k] = x
+	}
+	// Composition is only tracked when configured, or on import (no version recorded yet).
+	composition := types.StringNull()
+	if !prior.CompositionJSON.IsNull() || prior.Version.IsNull() {
+		var rc any
+		if len(v.Composition) > 0 {
+			_ = json.Unmarshal(v.Composition, &rc)
+		}
+		composition = reconcileJSON(prior.CompositionJSON, rc)
 	}
 	return contentModel{
 		Key:             types.StringValue(n.Key),
@@ -144,6 +218,7 @@ func contentFromAPI(n *client.ContentNode, v *client.ContentVersion, prior conte
 		RouteSegment:    strOrNull(v.RouteSegment),
 		SimpleRoute:     strOrNull(v.SimpleRoute),
 		PropertiesJSON:  reconcileJSON(prior.PropertiesJSON, remote),
+		CompositionJSON: composition,
 		Publish:         prior.Publish,
 		PermanentDelete: prior.PermanentDelete,
 		Version:         types.StringValue(v.Version),
@@ -179,11 +254,17 @@ func (r *contentResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddAttributeError(path.Root("properties_json"), "Invalid JSON", "properties_json must be a JSON object: "+err.Error())
 		return
 	}
+	comp, err := parseObject(plan.CompositionJSON)
+	if err != nil {
+		resp.Diagnostics.AddAttributeError(path.Root("composition_json"), "Invalid JSON", "composition_json must be a JSON object: "+err.Error())
+		return
+	}
 	in := &client.NewContent{
 		ContentType: plan.ContentType.ValueString(),
 		Blueprint:   plan.Blueprint.ValueString(),
 		InitialVersion: client.ContentVersion{
 			DisplayName: plan.DisplayName.ValueString(), SimpleRoute: plan.SimpleRoute.ValueString(), Properties: rawProps(props),
+			Composition: rawObject(comp),
 		},
 	}
 	// Computed attributes are unknown on create: send only what was configured.
@@ -298,6 +379,15 @@ func (r *contentResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.AddAttributeError(path.Root("properties_json"), "Invalid JSON", err.Error())
 		return
 	}
+	newComp, err3 := parseObject(plan.CompositionJSON)
+	oldComp, err4 := parseObject(state.CompositionJSON)
+	if err := errors.Join(err3, err4); err != nil {
+		resp.Diagnostics.AddAttributeError(path.Root("composition_json"), "Invalid JSON", err.Error())
+		return
+	}
+	// A null composition_json means "not managed": it never counts as a change.
+	compChanged := newComp != nil && !compositionKept(plan.CompositionJSON, state.CompositionJSON) &&
+		len(mergePatchDiff(oldComp, newComp)) > 0
 	key := state.Key.ValueString()
 
 	// 1. Move / re-own the node when requested.
@@ -320,7 +410,8 @@ func (r *contentResource) Update(ctx context.Context, req resource.UpdateRequest
 	dataChanged := routeChanged ||
 		plan.DisplayName.ValueString() != state.DisplayName.ValueString() ||
 		plan.SimpleRoute.ValueString() != state.SimpleRoute.ValueString() ||
-		len(mergePatchDiff(oldProps, newProps)) > 0
+		len(mergePatchDiff(oldProps, newProps)) > 0 ||
+		compChanged
 
 	version := state.Version.ValueString()
 	status := state.Status.ValueString()
@@ -329,13 +420,26 @@ func (r *contentResource) Update(ctx context.Context, req resource.UpdateRequest
 	switch {
 	case !dataChanged:
 		ver, err = r.c.GetVersion(ctx, key, version)
-	case status == statusPublished:
+	case status == statusPublished || compChanged:
+		// A published version is immutable. A changed composition is also written as a new version:
+		// a version PATCH accepts the composition but does not apply it to nodes it cannot match by id.
 		in := &client.ContentVersion{
 			Locale: state.Locale.ValueString(), DisplayName: plan.DisplayName.ValueString(),
 			SimpleRoute: plan.SimpleRoute.ValueString(), Properties: rawProps(newProps),
 		}
 		if !plan.RouteSegment.IsUnknown() {
 			in.RouteSegment = plan.RouteSegment.ValueString()
+		}
+		if newComp != nil {
+			in.Composition = rawObject(newComp)
+		} else {
+			// Unmanaged: carry the existing composition over rather than dropping it.
+			cur, gerr := r.c.GetVersion(ctx, key, version)
+			if gerr != nil {
+				resp.Diagnostics.AddError("Reading content version failed", gerr.Error())
+				return
+			}
+			in.Composition = cur.Composition
 		}
 		ver, err = r.c.CreateVersion(ctx, key, in)
 	default:
